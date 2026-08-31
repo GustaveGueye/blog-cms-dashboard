@@ -1,7 +1,6 @@
-# Ultron Dashboard - Fullstack Web Application
+# Ultron Dashboard — Fullstack Web Application
 
-## 📱 Project Overview
-**Project 5 Dashboard** - Fullstack application built with Node.js + Express + SQLite + JWT authentication + Blog CMS. Created as part of an AI training program using **free YouTube resources only** (no paid courses).
+**Project 5 Dashboard** — Fullstack application built with Node.js + Express + SQLite + JWT authentication + Blog CMS. Created as part of an AI training program using **free YouTube resources only** (no paid courses).
 
 **Status**: ✅ 13/13 tests passing (GREEN Phase) | ✅ TDD methodology | ✅ Production-ready
 
@@ -10,8 +9,8 @@
 ## 🛠️ Tech Stack
 
 | Category | Technologies |
-|----------|-------------|
-| **Backend** | Node.js, Express.js, SQLite (sync API), bcrypt, jsonwebtoken |
+|----------|--------------|
+| **Backend** | Node.js, Express.js, SQLite (sync API via better-sqlite3), bcrypt, jsonwebtoken |
 | **Authentication** | JWT tokens, bcrypt password hashing, httpOnly cookies, SameSite=Lax |
 | **Database** | SQLite with custom synchronous API (users, sessions, metrics, posts tables) |
 | **Frontend** | HTML5, CSS3, vanilla JavaScript (ES modules), Chart.js CDN |
@@ -21,10 +20,34 @@
 
 ---
 
+## 🏗️ Architecture
+
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────┐
+│   Frontend      │────▶│   Backend API    │────▶│  Database   │
+│  (public/)      │     │  (src/)          │     │  (SQLite)   │
+│                 │     │                  │     │             │
+│ - index.html    │     │ - Express.js     │     │ - users     │
+│ - app.js        │     │ - JWT Auth       │     │ - sessions  │
+│ - Chart.js      │     │ - Blog CRUD      │     │ - metrics   │
+│ - CSS Variables │     │ - Metrics API    │     │ - posts     │
+└─────────────────┘     └──────────────────┘     └─────────────┘
+```
+
+### Key Design Decisions
+
+- **Sync SQLite API** (`better-sqlite3`): Deterministic for tests, no async/await complexity
+- **Cookie-based Auth**: httpOnly + SameSite=Lax (CSRF-resistant) — not localStorage
+- **Direct Module Imports in Tests**: Shared DB instance, faster than HTTP requests
+- **Vanilla Frontend**: No build step, deployable as static files, CDN Chart.js
+- **Linear Dark Mode**: CSS custom properties, responsive grid, French locale
+
+---
+
 ## ✨ Features
 
 ### Authentication & Security
-- ✅ User registration with bcrypt password hashing
+- ✅ User registration with bcrypt password hashing (12 salt rounds)
 - ✅ Login with JWT tokens stored in httpOnly cookies
 - ✅ Token verification on protected routes
 - ✅ Session cleanup and logout
@@ -62,15 +85,16 @@
 ## 🚀 Quick Start
 
 ### Local Development
+
 ```bash
 # 1. Clone repository
-git clone https://github.com/ghost5068759611/ultron-dashboard.git
+git clone https://github.com/GustaveGueye/ultron-dashboard.git
 cd ultron-dashboard
 
 # 2. Start backend
 cd backend
 npm install
-node src/index.js
+node src/index.js   # Runs on http://localhost:3001
 
 # 3. Open frontend
 open frontend/index.html
@@ -80,15 +104,21 @@ open frontend/index.html
 # http://localhost:3001/api/auth/me (with cookie)
 ```
 
+### macOS Shortcut
+Double-click `~/Desktop/Project-5-Dashboard.command` — auto-installs deps and starts server.
+
 ### Test Suite
+
 ```bash
 cd backend && npx jest tests/auth.test.js --no-coverage --verbose
 # Expected: 13/13 passing (GREEN)
 ```
 
 ### Environment Variables
+
 Create `.env` in backend directory:
-```
+
+```env
 JWT_SECRET=votre-secret-ici
 JWT_EXPIRES_IN=7d
 PORT=3001
@@ -99,6 +129,7 @@ PORT=3001
 ## 📊 API Endpoints
 
 ### Auth Routes (`/api/auth`)
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/register` | Register new user |
@@ -107,6 +138,7 @@ PORT=3001
 | `GET` | `/me` | Get current user data |
 
 ### Posts Routes (`/api/posts`)
+
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | `GET` | `/posts/published` | No | List published posts |
@@ -119,6 +151,7 @@ PORT=3001
 | `DELETE` | `/posts/:id` | ✅ | Delete post |
 
 ### Users Routes (`/api/users`)
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/` | List all users |
@@ -130,14 +163,33 @@ PORT=3001
 
 ---
 
-## 📚 Learning Resources
+## 🧪 Test Coverage
+
+```bash
+cd backend
+npx jest tests/auth.test.js --no-coverage --verbose
+```
+
+**Test Results (13/13 passing):**
+- ✅ Register: hash stored, token cookie set
+- ✅ Login: valid credentials, cookie set
+- ✅ Login: invalid password rejected
+- ✅ Login: non-existent user rejected
+- ✅ Me: returns user data with valid cookie
+- ✅ Me: returns 401 without cookie
+- ✅ Logout: clears cookie
+- ✅ Logout: idempotent
+- ✅ Password: bcrypt hash format verified
+- ✅ Session: cookie parsing correct
+- ✅ DB: cleanup between tests
+- ✅ Duplicate registration handled
+- ✅ Token verification works
+
+---
+
+## 📚 Learning Context
 
 This project was built as part of an **AI/ML training program** using **free YouTube resources**:
-
-### Linear Algebra (Phase 0)
-- 3Blue1Brown playlist (15 videos)
-- Pace: 3 videos/day, 7-day program
-- Completed: All 15 videos ✅
 
 ### Web Development Roadmap
 - **Phase 1**: Vanilla HTML/CSS/JS + TDD with Jest ✅
@@ -154,18 +206,19 @@ This project was built as part of an **AI/ML training program** using **free You
 
 ---
 
-## 📬 Contact & Portfolio
+## 🚀 Deployment (Render.com)
 
-**GitHub**: [@ghost5068759611](https://github.com/ghost5068759611)
+1. Connect repo to Render
+2. Create **Web Service**:
+   - Build: `cd backend && npm install`
+   - Start: `node src/index.js`
+3. Add **Persistent Disk** (1GB) mounted at `/var/data`
+4. Set environment variables:
+   - `JWT_SECRET` (generate secure random)
+   - `NODE_ENV=production`
+5. Deploy
 
-**Built with**: 
-- ☕ Free YouTube resources only
-- 🧪 TDD methodology (test-driven development)
-- 🎨 Linear dark mode design
-- 📱 Mobile-first responsive approach
-- 🔒 Secure authentication (JWT + bcrypt)
-
-**Current Focus**: AI Training Program Phase 0 (Linear Algebra) + WebDev Practice Projects 1-5
+Database file: `/var/data/database.sqlite`
 
 ---
 
@@ -175,10 +228,22 @@ This project was built as part of an **AI/ML training program** using **free You
 - Tokens: JWT signed with secret, stored in httpOnly cookies
 - CSRF: Resistant via httpOnly + SameSite=Lax cookies
 - SQLite: Sync API for deterministic tests, persistent disk for production
-- Production: Set `JWT_SECRET` environment variable, enable `secure: true` cookie flag
+- Production: Set `JWT_SECRET` env var, enable `secure: true` cookie flag
 
 ---
 
 ## 📄 License
 
-MIT License - feel free to use as portfolio piece or starting point for your own projects.
+MIT License — feel free to use as portfolio piece or starting point for your own projects.
+
+---
+
+## 📬 Portfolio Context
+
+**Built by**: [Gustave Gueye](https://github.com/GustaveGueye)  
+**Methodology**: TDD, vanilla-first, systematic debugging  
+**Stack**: Node/Express/SQLite/JWT + vanilla JS/Chart.js  
+**Design**: Linear dark mode, mobile-first, French locale  
+**Status**: Learning project — demonstrates fullstack capabilities
+
+*Last updated: 2026-08-31*
