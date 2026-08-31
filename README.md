@@ -66,4 +66,4 @@ npm test
 
 ## License
 
-MIT — Practice project (AI Training Program Phase 0)
+MIT — Practice project
