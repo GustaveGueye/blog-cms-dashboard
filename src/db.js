@@ -1,146 +1,111 @@
-// Synchronous SQLite database for backend
-// Uses sqlite3 node module directly (no async open() needed)
-import sqlite3 from 'sqlite3';
+// JSON File Database - Développement rapide
+// Remplacer par PostgreSQL (Neon) au deploy final
 
-export const db = new sqlite3.Database(':memory:', (err) => {
-  if (err) {
-    console.error('Could not open database', err);
-    process.exit(1);
+import fs from 'fs';
+import path from 'path';
+
+const dbPath = process.env.DATABASE_URL || './data/db.json';
+
+// Helper: Read database file
+function readDB() {
+  const data = fs.readFileSync(dbPath, 'utf-8');
+  return JSON.parse(data);
+}
+
+// Helper: Write database file
+function writeDB(data) {
+  fs.writeFileSync(dbPath, JSON.stringify(data, null, 2));
+}
+
+// Initialize tables (just ensure structure exists)
+function initDB() {
+  const data = readDB();
+  if (!data.users) data.users = [];
+  if (!data.posts) data.posts = [];
+  writeDB(data);
+  console.log('✅ JSON database initialized at', dbPath);
+  return data;
+}
+
+// --- USERS CRUD ---
+
+export async function findUserByEmail(email) {
+  const data = readDB();
+  return data.users.find(u => u.email === email) || null;
+}
+
+export async function createUser({ email, password, name }) {
+  const data = readDB();
+  const { v4: uuidv4 } = await import('uuid');
+  const id = uuidv4();
+  
+  const newUser = { id, email, name, password, createdAt: new Date().toISOString() };
+  data.users.push(newUser);
+  writeDB(data);
+  
+  return newUser;
+}
+
+export async function getUserById(id) {
+  const data = readDB();
+  return data.users.find(u => u.id === id) || null;
+}
+
+// --- POSTS CRUD ---
+
+export async function findPublishedPosts({ limit = 10, offset = 0, authorId } = {}) {
+  const data = readDB();
+  let results = data.posts.filter(p => p.published === true);
+  
+  if (authorId) {
+    results = results.filter(p => p.authorId === authorId);
   }
-});
-
-// Initialize tables synchronously
-db.serialize(() => {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      name TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-    
-    CREATE TABLE IF NOT EXISTS sessions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      token TEXT UNIQUE NOT NULL,
-      expires_at DATETIME NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id)
-    );
-    
-    CREATE TABLE IF NOT EXISTS metrics (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER,
-      name TEXT NOT NULL,
-      value REAL,
-      unit TEXT,
-      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-    
-    CREATE TABLE IF NOT EXISTS posts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      title TEXT NOT NULL,
-      slug TEXT UNIQUE NOT NULL,
-      content TEXT NOT NULL,
-      excerpt TEXT,
-      cover_image TEXT,
-      status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'archived')),
-      published_at DATETIME,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id)
-    );
-  `);
-});
-
-// Synchronous get (single row)
-export function get(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
-      if (err) reject(err);
-      else resolve(row);
-    });
-  });
+  
+  results.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  return results.slice(offset, offset + limit);
 }
 
-// Synchronous all (multiple rows)
-export function all(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
-    });
-  });
+export async function countPublishedPosts() {
+  const data = readDB();
+  return data.posts.filter(p => p.published === true).length;
 }
 
-// Synchronous run (insert/update/delete)
-export function run(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function(err) {
-      if (err) reject(err);
-      else resolve({ lastID: this.lastID, changes: this.changes });
-    });
-  });
+export async function createPost({ title, content, published, authorId }) {
+  const data = readDB();
+  const { v4: uuidv4 } = await import('uuid');
+  const id = uuidv4();
+  
+  const newPost = { id, title, content, published: published || false, authorId, createdAt: new Date().toISOString() };
+  data.posts.push(newPost);
+  writeDB(data);
+  
+  return newPost;
 }
 
-// Synchronous close
-export function close() {
-  return new Promise((resolve, reject) => {
-    db.close(err => {
-      if (err) reject(err);
-      else resolve();
-    });
-  });
+export async function getPostById(id) {
+  const data = readDB();
+  return data.posts.find(p => p.id === id) || null;
 }
 
-// Initialize database (synchronous wrapper)
-export function initDb() {
-  return new Promise((resolve) => {
-    db.serialize(() => {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS users (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          email TEXT UNIQUE NOT NULL,
-          password_hash TEXT NOT NULL,
-          name TEXT,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        );
-        
-        CREATE TABLE IF NOT EXISTS sessions (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id INTEGER NOT NULL,
-          token TEXT UNIQUE NOT NULL,
-          expires_at DATETIME NOT NULL,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (user_id) REFERENCES users(id)
-        );
-        
-        CREATE TABLE IF NOT EXISTS metrics (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id INTEGER,
-          name TEXT NOT NULL,
-          value REAL,
-          unit TEXT,
-          timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-        );
-        
-        CREATE TABLE IF NOT EXISTS posts (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id INTEGER NOT NULL,
-          title TEXT NOT NULL,
-          slug TEXT UNIQUE NOT NULL,
-          content TEXT NOT NULL,
-          excerpt TEXT,
-          cover_image TEXT,
-          status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'archived')),
-          published_at DATETIME,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (user_id) REFERENCES users(id)
-        );
-      `, resolve);
-    });
-  });
+export async function updatePost(id, updates) {
+  const data = readDB();
+  const idx = data.posts.findIndex(p => p.id === id);
+  if (idx === -1) return null;
+  
+  data.posts[idx] = { ...data.posts[idx], ...updates, updatedAt: new Date().toISOString() };
+  writeDB(data);
+  return data.posts[idx];
 }
+
+export async function deletePost(id) {
+  const data = readDB();
+  const idx = data.posts.findIndex(p => p.id === id);
+  if (idx === -1) return false;
+  
+  data.posts.splice(idx, 1);
+  writeDB(data);
+  return true;
+}
+
+// Export init
+export default { initDB, readDB, writeDB };
