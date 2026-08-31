@@ -1,18 +1,8 @@
-import express from 'express';
-import { body, query, validationResult } from 'express-validator';
-import { 
-  createPost,
-  getPostById,
-  getPostBySlug,
-  getPosts,
-  updatePost,
-  deletePost,
-  getPublishedPosts,
-  getPostStats
-} from '../posts.js';
-import { verifyToken, COOKIE_NAME } from '../auth.js';
+// Posts Routes - CRUD + Pagination + Prisma
+import { Router } from 'express';
+import { body, query, param, validationResult } from 'express-validator';
 
-const router = express.Router();
+const router = Router();
 
 // Validation middleware
 const validate = (req, res, next) => {
@@ -23,164 +13,223 @@ const validate = (req, res, next) => {
   next();
 };
 
-// Auth middleware
-const authenticate = (req, res, next) => {
-  const token = req.cookies[COOKIE_NAME];
-  if (!token) {
-    return res.status(401).json({ error: 'Not authenticated' });
-  }
-  
-  const payload = verifyToken(token);
-  if (!payload) {
-    return res.status(401).json({ error: 'Invalid or expired token' });
-  }
-  
-  req.user = payload;
-  next();
-};
-
-// ============================================
-// PUBLIC ROUTES (no auth required)
-// ============================================
-
-// Get published posts (public blog listing)
-router.get('/posts/published', 
+// GET /api/posts - List posts with pagination
+router.get('/',
   query('page').optional().isInt({ min: 1 }).toInt(),
   query('limit').optional().isInt({ min: 1, max: 50 }).toInt(),
-  query('search').optional().trim(),
-  query('sortBy').optional().isIn(['created_at', 'updated_at', 'published_at', 'title']),
-  query('sortOrder').optional().isIn(['ASC', 'DESC']),
+  query('published').optional().isBoolean().toBoolean(),
   validate,
   async (req, res) => {
     try {
-      const result = await getPublishedPosts(req.query);
-      res.json(result);
+      const page = req.query.page || 1;
+      const limit = req.query.limit || 10;
+      const published = req.query.published !== undefined ? req.query.published : true;
+      const skip = (page - 1) * limit;
+
+      const where = published ? { published: true } : {};
+
+      const [posts, total] = await Promise.all([
+        req.prisma.post.findMany({
+          where,
+          include: {
+            author: { select: { id: true, name: true, email: true } }
+          },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit
+        }),
+        req.prisma.post.count({ where })
+      ]);
+
+      res.json({
+        posts,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit)
+        }
+      });
     } catch (error) {
-      console.error('Get published posts error:', error);
-      res.status(500).json({ error: 'Failed to get posts' });
+      console.error('List posts error:', error);
+      res.status(500).json({ error: 'Failed to fetch posts' });
     }
   }
 );
 
-// Get single published post by slug
-router.get('/posts/published/:slug', async (req, res) => {
-  try {
-    const post = await getPostBySlug(req.params.slug);
-    if (!post || post.status !== 'published') {
-      return res.status(404).json({ error: 'Post not found' });
-    }
-    res.json({ post });
-  } catch (error) {
-    console.error('Get post by slug error:', error);
-    res.status(500).json({ error: 'Failed to get post' });
-  }
-});
-
-// ============================================
-// AUTHENTICATED ROUTES
-// ============================================
-
-// Create a new post
-router.post('/posts',
-  authenticate,
-  body('title').trim().isLength({ min: 1, max: 200 }),
-  body('content').trim().isLength({ min: 1 }),
-  body('excerpt').optional().trim().isLength({ max: 500 }),
-  body('cover_image').optional().trim().isURL(),
-  body('status').optional().isIn(['draft', 'published', 'archived']),
+// GET /api/posts/:id - Get single post
+router.get('/:id',
+  param('id').isUUID(),
   validate,
   async (req, res) => {
     try {
-      const post = await createPost(req.user.userId, req.body);
+      const post = await req.prisma.post.findUnique({
+        where: { id: req.params.id },
+        include: {
+          author: { select: { id: true, name: true, email: true } }
+        }
+      });
+
+      if (!post) {
+        return res.status(404).json({ error: 'Post not found' });
+      }
+
+      res.json({ post });
+    } catch (error) {
+      console.error('Get post error:', error);
+      res.status(500).json({ error: 'Failed to fetch post' });
+    }
+  }
+);
+
+// POST /api/posts - Create post (protected)
+router.post('/',
+  body('title').trim().isLength({ min: 1, max: 200 }),
+  body('content').optional().isString(),
+  body('published').optional().isBoolean(),
+  validate,
+  async (req, res) => {
+    try {
+      const token = req.cookies?.token || req.headers.authorization?.replace('Bearer ', '');
+      if (!token) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      // Verify token (reuse from auth routes)
+      const jwt = await import('jsonwebtoken');
+      const JWT_SECRET = process.env.JWT_SECRET || 'blog-cms-secret-key-change-in-production';
+      
+      let payload;
+      try {
+        payload = jwt.default.verify(token, JWT_SECRET);
+      } catch {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+
+      const { title, content, published = false } = req.body;
+
+      const post = await req.prisma.post.create({
+        data: {
+          title,
+          content,
+          published,
+          authorId: payload.userId
+        },
+        include: {
+          author: { select: { id: true, name: true, email: true } }
+        }
+      });
+
       res.status(201).json({ post });
     } catch (error) {
       console.error('Create post error:', error);
-      res.status(400).json({ error: error.message });
+      res.status(500).json({ error: 'Failed to create post' });
     }
   }
 );
 
-// Get all posts (admin view with pagination & filters)
-router.get('/posts',
-  authenticate,
-  query('page').optional().isInt({ min: 1 }).toInt(),
-  query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
-  query('status').optional().isIn(['draft', 'published', 'archived']),
-  query('search').optional().trim(),
-  query('sortBy').optional().isIn(['created_at', 'updated_at', 'published_at', 'title']),
-  query('sortOrder').optional().isIn(['ASC', 'DESC']),
-  validate,
-  async (req, res) => {
-    try {
-      const result = await getPosts({
-        ...req.query,
-        userId: req.user.userId
-      });
-      res.json(result);
-    } catch (error) {
-      console.error('Get posts error:', error);
-      res.status(500).json({ error: 'Failed to get posts' });
-    }
-  }
-);
-
-// Get post stats for current user
-router.get('/posts/stats/summary', authenticate, async (req, res) => {
-  try {
-    const stats = await getPostStats(req.user.userId);
-    res.json({ stats });
-  } catch (error) {
-    console.error('Get post stats error:', error);
-    res.status(500).json({ error: 'Failed to get stats' });
-  }
-});
-
-// Get single post by ID (owner only)
-router.get('/posts/:id', authenticate, async (req, res) => {
-  try {
-    const post = await getPostById(req.params.id);
-    if (!post) {
-      return res.status(404).json({ error: 'Post not found' });
-    }
-    if (post.user_id !== req.user.userId) {
-      return res.status(403).json({ error: 'Not authorized to view this post' });
-    }
-    res.json({ post });
-  } catch (error) {
-    console.error('Get post error:', error);
-    res.status(500).json({ error: 'Failed to get post' });
-  }
-});
-
-// Update a post
-router.put('/posts/:id',
-  authenticate,
+// PUT /api/posts/:id - Update post (protected)
+router.put('/:id',
+  param('id').isUUID(),
   body('title').optional().trim().isLength({ min: 1, max: 200 }),
-  body('content').optional().trim().isLength({ min: 1 }),
-  body('excerpt').optional().trim().isLength({ max: 500 }),
-  body('cover_image').optional().trim().isURL(),
-  body('status').optional().isIn(['draft', 'published', 'archived']),
+  body('content').optional().isString(),
+  body('published').optional().isBoolean(),
   validate,
   async (req, res) => {
     try {
-      const post = await updatePost(req.params.id, req.user.userId, req.body);
+      const token = req.cookies?.token || req.headers.authorization?.replace('Bearer ', '');
+      if (!token) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      const jwt = await import('jsonwebtoken');
+      const JWT_SECRET = process.env.JWT_SECRET || 'blog-cms-secret-key-change-in-production';
+      
+      let payload;
+      try {
+        payload = jwt.default.verify(token, JWT_SECRET);
+      } catch {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+
+      // Check ownership
+      const existing = await req.prisma.post.findUnique({
+        where: { id: req.params.id }
+      });
+
+      if (!existing) {
+        return res.status(404).json({ error: 'Post not found' });
+      }
+
+      if (existing.authorId !== payload.userId) {
+        return res.status(403).json({ error: 'Not authorized to update this post' });
+      }
+
+      const { title, content, published } = req.body;
+      const updateData = {};
+      if (title !== undefined) updateData.title = title;
+      if (content !== undefined) updateData.content = content;
+      if (published !== undefined) updateData.published = published;
+
+      const post = await req.prisma.post.update({
+        where: { id: req.params.id },
+        data: updateData,
+        include: {
+          author: { select: { id: true, name: true, email: true } }
+        }
+      });
+
       res.json({ post });
     } catch (error) {
       console.error('Update post error:', error);
-      res.status(400).json({ error: error.message });
+      res.status(500).json({ error: 'Failed to update post' });
     }
   }
 );
 
-// Delete a post
-router.delete('/posts/:id', authenticate, async (req, res) => {
-  try {
-    await deletePost(req.params.id, req.user.userId);
-    res.json({ success: true, message: 'Post deleted successfully' });
-  } catch (error) {
-    console.error('Delete post error:', error);
-    res.status(400).json({ error: error.message });
+// DELETE /api/posts/:id - Delete post (protected)
+router.delete('/:id',
+  param('id').isUUID(),
+  validate,
+  async (req, res) => {
+    try {
+      const token = req.cookies?.token || req.headers.authorization?.replace('Bearer ', '');
+      if (!token) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      const jwt = await import('jsonwebtoken');
+      const JWT_SECRET = process.env.JWT_SECRET || 'blog-cms-secret-key-change-in-production';
+      
+      let payload;
+      try {
+        payload = jwt.default.verify(token, JWT_SECRET);
+      } catch {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+
+      const existing = await req.prisma.post.findUnique({
+        where: { id: req.params.id }
+      });
+
+      if (!existing) {
+        return res.status(404).json({ error: 'Post not found' });
+      }
+
+      if (existing.authorId !== payload.userId) {
+        return res.status(403).json({ error: 'Not authorized to delete this post' });
+      }
+
+      await req.prisma.post.delete({
+        where: { id: req.params.id }
+      });
+
+      res.json({ message: 'Post deleted successfully' });
+    } catch (error) {
+      console.error('Delete post error:', error);
+      res.status(500).json({ error: 'Failed to delete post' });
+    }
   }
-});
+);
 
 export default router;

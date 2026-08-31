@@ -1,37 +1,56 @@
-// Express + SQLite backend for Project 5 Dashboard
+// Blog CMS Dashboard - Backend Entry Point
+// Express + Prisma + PostgreSQL + JWT Auth
+
 import express from 'express';
+import cors from 'cors';
 import cookieParser from 'cookie-parser';
-import { db, get, all, run, initDb } from './src/db.js';
-import authRoutes from './src/routes/auth.js';
-import postsRoutes from './src/routes/posts.js';
-import usersRoutes from './src/routes/users.js';
+import dotenv from 'dotenv';
+import { PrismaClient } from '@prisma/client';
+import authRoutes from './routes/auth.js';
+import postRoutes from './routes/posts.js';
+
+dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const prisma = new PrismaClient();
+const PORT = process.env.PORT || 8081;
 
-app.use(cookieParser());
+// Middleware
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  credentials: true
+}));
 app.use(express.json());
+app.use(cookieParser());
 
-// Initialize database
-initDb().then(() => {
-  console.log('✅ Database initialized');
+// Make prisma available to routes
+app.use((req, res, next) => {
+  req.prisma = prisma;
+  next();
+});
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // Routes
 app.use('/api/auth', authRoutes);
-app.use('/api/posts', postsRoutes);
-app.use('/api/users', usersRoutes);
+app.use('/api/posts', postRoutes);
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+// Error handler
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ error: 'Internal server error' });
 });
 
-// Root
-app.get('/', (req, res) => {
-  res.json({ message: 'Project 5 Dashboard API' });
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: 'Not found' });
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`Server running on http://localhost:${PORT}`);
 });
+
+export default app;
