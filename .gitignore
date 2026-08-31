@@ -1,0 +1,7 @@
+# See https://github.com/github/gitignore/blob/main/Node.gitignore
+# Basic Node.gitignore content
+node_modules/
+/*.env
+*.db
+*.sqlite
+.DS_Store
