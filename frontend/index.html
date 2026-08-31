@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blog — Project 5 Dashboard</title>
+  <style>
+    :root {
+      --bg: #0d0d0d;
+      --bg-secondary: #1a1a1a;
+      --fg: #e0e0e0;
+      --muted: #6b6b6b;
+      --accent: #bb86fc;
+      --card: #161616;
+      --border: #2a2a2a;
+    }
+    
+    [data-theme="dark"] { --bg: #0d0d0d; --bg-secondary: #1a1a1a; --fg: #e0e0e0; --muted: #6b6b6b; --accent: #bb86fc; --card: #161616; --border: #2a2a2a; }
+    [data-theme="light"] { --bg: #f5f5f5; --bg-secondary: #ffffff; --fg: #1a1a1a; --muted: #6b6b6b; --accent: #6200ee; --card: #ffffff; --border: #e0e0e0; }
+    
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+    
+    .container { max-width: 800px; margin: 0 auto; padding: 2rem; }
+    
+    header { margin-bottom: 2rem; padding-bottom: 2rem; border-bottom: 1px solid var(--border); }
+    
+    h1 { font-size: 1.8rem; color: var(--fg); margin-bottom: 0.5rem; }
+    
+    .tagline { color: var(--muted); font-size: 1rem; }
+    
+    .posts-list { display: grid; gap: 1.5rem; }
+    
+    .post-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .post-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+    
+    .post-card h2 { font-size: 1.2rem; margin-bottom: 0.5rem; }
+    
+    .post-card .meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 1rem; }
+    
+    .post-card .excerpt { color: var(--muted); font-size: 0.9rem; line-height: 1.4; margin-bottom: 1rem; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    
+    .post-card .read-more { color: var(--accent); text-decoration: none; font-weight: 500; }
+    
+    .no-posts { text-align: center; color: var(--muted); padding: 2rem; }
+    
+    @media (max-width: 480px) { .container { padding: 1rem; } h1 { font-size: 1.5rem; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Blog — Project 5 Dashboard</h1>
+      <p class="tagline">Fullstack application with SQLite + Express + JWT auth</p>
+    </header>
+    
+    <div id="posts" class="posts-list"></div>
+  </div>
+  
+  <script type="module">
+    import { getPublishedPosts } from './api.js';
+    
+    const postsContainer = document.getElementById('posts');
+    
+    async function loadPosts() {
+      try {
+        const result = await getPublishedPosts({ page: 1, limit: 10 });
+        
+        if (result.posts.length === 0) {
+          postsContainer.innerHTML = '<p class="no-posts">Aucun article publié pour le moment.</p>';
+          return;
+        }
+        
+        postsContainer.innerHTML = result.posts.map(post => `
+          <article class="post-card">
+            <h2>${post.title}</h2>
+            <div class="meta">
+              <span>Auteur: ${post.author_name || 'Inconnu'}</span>
+              <span>${new Date(post.created_at).toLocaleDateString('fr-FR')}</span>
+            </div>
+            <p class="excerpt">${post.excerpt || 'Pas de résumé disponible.'}</p>
+            <a href="/post/${post.slug}" class="read-more">Lire la suite →</a>
+          </article>
+        `).join('');
+      } catch (error) {
+        console.error('Error loading posts:', error);
+        postsContainer.innerHTML = '<p class="no-posts" style="color: #ff5f5f;">Erreur lors du chargement des articles.</p>';
+      }
+    }
+    
+    loadPosts();
+  </script>
+</body>
+</html>
