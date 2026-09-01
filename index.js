@@ -5,7 +5,7 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
-import db from './src/db.js';  // default export
+import db from './src/db.js';  // default export: { initDB, createUser, findUserByEmail, getUserById, findPublishedPosts, countPublishedPosts, createPost, getPostById, updatePost, deletePost };
 
 dotenv.config();
 

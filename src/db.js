@@ -108,4 +108,4 @@ export async function deletePost(id) {
 }
 
 // Export init
-export default { initDB, readDB, writeDB };
+export default { initDB, readDB, writeDB, createUser, findUserByEmail, getUserById, findPublishedPosts, countPublishedPosts, createPost, getPostById, updatePost, deletePost };
